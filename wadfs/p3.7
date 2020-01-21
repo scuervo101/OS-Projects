@@ -1,0 +1,263 @@
+.TH Project3 7
+.SH NAME
+Project 3: File Systems
+.SH SYNOPSIS
+In \fB Project 3: File Systems\fR,  we are created a file system library that will traverse
+and manage a WAD Files data similar to the WAD files that DOOM used. 
+.SH DESCRIPTION
+We are creating a user-level library that will parse through the information of a WAD file 
+and create it's respective directories and contents. I created a wad class that will create 
+a wad object. The wad object will store the information and store all of its metadata. 
+This library will then be linked with a FUSE library that will allow for mounting and viewing
+the information on the console with basic bash commands. 
+.SS \fI The Wad Class\fR 
+.B /wadfs/wad.h
+.LP
+.RS 3
+To create our wad file manager, I created a class that can handle all of information.
+Online author Jonathan Dowland provide some insight on the creation and management of a wad
+file system. This online tutorial guide me through the skeleton of my wad class. The header
+contains the skeleton of our wad class with additional function and structures that I will 
+use to simplify code.
+.LP
+.RS 3
+struct elements
+.LP
+.RS 3
+The elements struct provides a clean way to access the information of each Descriptors within 
+the wad file. 
+.LP
+The information is in 16B lengths with the first 4 being the element's offset, followed 
+by 4B of the element's lengths, and the final 8B of the ASCII name of the element. Thus the
+element will hold a long offset, long length, and char* name.
+.RE
+.RE
+.LP
+.RS 3
+struct node
+.LP
+.RS 3
+The node struct will act as the nodes of the linked vector list to later organize the wad file
+from the wad class.
+.LP
+The node most contain all the data from each descriptor and a pointer to its parent so that we
+may iterate through it. To simplify later function, I'll also store if it's a directory or if it
+is content.
+.RE
+.RE
+.LP
+.RS 3
+struct head
+.LP
+.RS 3
+Simple struct designed to hold the header information of our wad. This information is it's magic 
+(file type), number of descriptors (lumps), and offset. 
+.RE
+.RE
+.RE
+.LP
+.B /wadfs/wad.cpp
+.LP
+.RS 3
+The class of the wad. Functionality of the overall class, providing loading (load wad), content 
+management (getContent, getSize, isContent), and directory management(getDirectory, isDirectory).
+.LP
+.RS 3
+Wad* Wad::loadWad(const string &path)
+.LP
+.RS 3
+loadWad will be passed a string with the path name. Using the FILE type, we will open the file at
+path and interpret it's contents and information.
+.LP
+loadWad creates a new Wad object and passes the char string as a parameter.
+.LP
+loadWad will also use the information from the recently created header and save it's magic for future usuage
+(in the function getMagic).
+.RS 3
+.LP
+if (NULL == (wad = fopen(c, "rb")))	
+.LP
+We initially create a FILE *wad to hold our stream from the file. Using the above command, we can open and manipulate
+the content within the file.
+.LP
+if (1 != fread(hbuf, 12, 1, wad))
+.LP
+Will take a char* buffer and save the information from the beginning 12B of wad data. We can then save this information
+into a global head struct for later usage.
+.LP
+for (unsigned long x = 0; x < head.num; x++)
+.LP
+Within this for loop, the wad will create our linked vector list. Before the loop, we use the offset from the header and
+looping by the number of lumps provided by the header. This will allow us to go through and compare each content name to
+see where it is located.
+.LP
+Comparitors for _Start, _End, E*M*
+.LP
+Within the loop, we are going to check the lumps name and see if it matches any of the above tags. If our content has a
+_Start at the end of the file, we want to save it's previous parent as a pointer that parent and then push it into a our
+global sorted vector. After pushing it into sorted, we will label this content pointer as the new parent and loop through.
+If we reach an _End tail, we much check who the current parent is, then we must make the current parent's parent the new
+parent (step back out the directory). We do not push a _End onto our sorted stack. If a E*M* label appears, we will save the
+current parent as a pointer to E*M*'s parent and then set E*M* as the parent and push it onto the sorted vector. 
+Then, the iterater will loop 10 times, grabbing the next ten items, setting their parent's as E*M* and pushing each on onto 
+the sorted stack. If none of these apply, save the current parent to the pointer of the current descriptor and push it onto
+the sorted vector.
+.RE
+.RE
+.RE
+.LP
+.RS 3
+bool Wad::isContent(const string &path)
+.LP
+.RS 3
+isContent will return true if the path entered represent content and false otherwise. During the creation of the linked vector
+list sorted, we saved a boolean value in each node to represent if it is a content node or a directory node. isContent uses 
+vector<string> pathing(string paths) to parse through the path, the iterates through sorted until it finds the node represent
+by the path. Once isContent finds the node, isContent returns the boolean content.
+.LP
+.RE
+.RE
+.RS 3
+bool Wad::isDirectory(const string &path)
+.LP
+.RS 3
+isDirectory will return true if the path entered represent a directory and false otherwise. Similar to isContent, loadWad saved a boolean
+value directory to represent the node as a directory. isDirectory will just return directory boolean.
+.LP
+.RE
+.RE
+.RS 3
+int Wad::getSize(const string &path)
+.LP
+.RS 3
+getSize will return the length of a descriptor. Using the vector<string> pathing(string paths) function to parse the string, this function will
+iterate through the sorted vector until the node with the same element name is found representing the path. Once that node is found, getSize returns
+the node's element.length.
+.LP
+.RE
+.RE
+.RS 3
+int Wad::getContents(const string &path, char *buffer, int length, int offset)
+.LP
+.RS 3
+getContet will return the length of a descriptor that was saved into the provided buffer. Using the vector<string> pathing(string paths) function to parse the string,
+this function will iterate through the sorted vector to find the node represent by the path. getContent will then open the WAD file again and move it's file iterate
+to the file's offset. Once at the offset, this function will save up to either the length of the node or the length provided (which ever is shorter) into the buffer.
+Then return the length of the buffer.
+.LP
+.RE
+.RE
+.RS 3
+int Wad::getDirectory(const string &path, vector<string> *directory)
+.LP
+.RS 3
+getDirectory will return the amount of items in a directory. Using the vector<string> pathing(string paths) function to parse the string,
+this function will iterate through the sorted vector to find the node represent by the path. once at the node, we will iterate through
+sorted vector again, this time pushing every node who's parent is equal to our path node into a vector that contains all the names. Finally,
+getDirectory will return the size of the 
+.LP
+.RE
+.RE
+.RS 3
+vector<string> pathing(string paths)
+.LP
+.RS 3
+pathing is an external function that is used to parse through a provided path (removing any '/'s) and return that path as a vector of
+strings.
+.LP
+.RE
+.RE
+.RS 3
+Node finding agorithm
+.LP
+.RS 3
+As I previously mentioned, I used the same node finding algorithm for many of these functions to locate the node with the provided path.
+The way this algorithm functions is simply. Because sorted vector is chronological order, the parse path must be in proper order, in other
+words if you provide a directory that is actually the parent of a directory as a child, the iterater  will end and state the path provided is invalid.
+This algorithm also must check the parent. To check the parent, once we find a substring that represent a directory, we will save that directory as
+the previoud parent, and then we can check and make sure the next node that matches the next substring has a parent equal to our previous parent.
+.LP
+.RE
+.RE
+.RE
+.SS \fI FUSE and Daemon library\fR
+.B /wadfs/fuse.cpp
+.LP
+.RS 3
+The fuse library will be a simply way of implementing our library into a command line environment using the FUSE api. Following Lorenzo Fontana's
+FUSE tutorial, we can implementing a simply file system command line function manage the WAD file.
+.LP
+.RS 3
+int main(int argc, char *argv[])
+.LP
+.RS 3
+The main will have the have the simple job of creating an fuse_operations object and a pasing it the fuse_main function so that we can use it's functionality
+constantly.
+.LP
+The input for the main will be the WAD file name (argv[1]) and the path that we will be mounting to (argv[2]). We must check if we are recent two different inputs
+then pass them to their respective functions. First, loadWad will take our WAD name and save it as global WAD object that we will be able to use through the program.
+We must then declare each function that our fuse_operations object will use for read, open, readdir, and getattr (get attributes). After, the fuse_main will take in
+the same argc and argv; however, we must adjustes these as the fuse_main only needs a mount location. To adjust the char*, we can simply shift the argv over by one and
+delete argv[1] and substract 1 to argc.
+.LP
+.RE
+static int getattr_callback(const char *path, struct stat *stbuf) 
+.RS 3
+.LP
+The getattr_callback is our getattr function that we will pass to fuse_operations. This function will take a path name that can be used to input into our wad object.
+We will have two if statements that will check wether the path is a directory (wad->isDirectory(path)) or a content node (wad->isContent(path)) and set it's attributes values. For a directory, we just set the FUSE
+default attributes. For content, we set the default content attributes and set the size and block amount to wad->getSize(path).
+.RE
+.LP
+static int readdir_callback(..)
+.RS 3
+The readdir_callback function will be passed to the fuse_operations as the readdir function. This function will find the node associated with the path name and then get it's
+directory contents and place it into a vector<string> (wad->getDirectory(path, &vector)). Then using the size of the string vector, we will iterate through it and fill the 
+buffer with it's name. 
+.RE
+.LP
+static int read_callback(..)
+.RS 3
+The read_callback function will be passed to the fuse_operations as the read function. This function will find the node associated with the path name and then return wad->getContent.
+.RE
+.LP
+static int open_callback(const char *path, struct fuse_file_info *fi) 
+.RS 3
+The read_callback function will be passed to the fuse_operations as the read function. The open callback is called when the system requests for a file to be opened, and as the tutorial
+discussed, we can return 0 since we aren't really working with real memory files.
+.RE
+.RE
+.SH TESTING
+.SS Provided test functions
+To test the functionality of the library, I used testing cpp function while running with visual studios debugging tool. I also used the provide wad_dump.cpp file inside the linux kernel with
+the wad library built and running. To test the FUSE library functionality, I created the FUSE library and ran it using the DOOM1.WAD file and test the manipulation and viewing of the file.
+The two different tests, for wad_dump.cpp/wad library and fuse library were done on fresh kernel snapshoots on the reptilian kernel.
+.LP
+To further discuss visual studio debugging, I created a main function that included the wad header and class. Using the main function, I tested each new feature added.
+.LP
+Issues found included: overflow when path provided is content, ignoring of a path name with a leading /, and issues with a path name of the root '/'.
+.LP
+All these issues have been accounted for and resolved.
+.LP
+During the wad_dump.cpp testing, I used both sample.WAD and DOOM1.WAD to test the functions of my library. Both were accessed and read correctly.
+.LP
+During the testing of the fuse library, I mounted the original doom wad (DOOM1.WAD) and was able to CD into it and views it's contents.
+.LP
+.SH BUGS
+No known bugs.
+.SH LINK
+https://youtu.be/uWBynSGtRc
+.SH REFERENCES/CITATIONS
+Dowland Tutorial:
+.RS 3
+https://jmtd.net/software/doom/
+.RE
+.LP
+FONTANA Tutorial:
+.RS 3
+https://engineering.facile.it/blog/eng/write-filesystem-fuse/
+.RE
+.LP
+Modern Operating Systems, 4th Edition, ANDREW S. TANENBAUM, HERBERT BOS
+.SH AUTHOR
+Samuel Cuervo
